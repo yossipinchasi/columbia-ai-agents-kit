@@ -602,6 +602,35 @@ function checkCost(input: SubmissionInput): SubmissionCheck {
  * `not_covered` is checked alongside them. An agent that claims no limits at
  * all has not thought about its limits; every real source has some.
  */
+/**
+ * Every field a subscriber reads that still carries the scaffold's TODO.
+ *
+ * `agent:new` writes "TODO — …" into each of them, promising that the first
+ * check would say so. It did not: the check counted answers and "TODO" is an
+ * answer, so a manifest with every judgement left blank passed this check —
+ * found by scaffolding one in the public kit and running it.
+ */
+function placeholderFields(spec: AgentSpec): string[] {
+  const s = spec as unknown as Record<string, unknown>
+  const about = (s.about ?? {}) as Record<string, unknown>
+  const alert = (s.alert ?? {}) as Record<string, unknown>
+  const fields: Array<[string, unknown]> = [
+    ['name', s.name],
+    ['tagline', s.tagline],
+    ['card_subtitle', s.card_subtitle],
+    ['description', s.description],
+    ['not_covered', s.not_covered],
+    ['before_you_join', s.before_you_join],
+    ['category', s.category],
+    ['alert.title', alert.title],
+    ['alert.body', alert.body],
+    ...Object.entries(about).map(([key, value]): [string, unknown] => [`about.${key}`, value]),
+  ]
+  const hasTodo = (value: unknown): boolean =>
+    typeof value === 'string' ? /\bTODO\b/.test(value) : Array.isArray(value) ? value.some(hasTodo) : false
+  return fields.filter(([, value]) => hasTodo(value)).map(([name]) => name)
+}
+
 function checkAbout(spec: AgentSpec): SubmissionCheck {
   const missing = missingAbout((spec as { about?: unknown }).about)
   const notCovered = Array.isArray((spec as { not_covered?: unknown }).not_covered)
@@ -611,6 +640,8 @@ function checkAbout(spec: AgentSpec): SubmissionCheck {
   const problems: string[] = []
   if (missing.length > 0) problems.push(`about is missing: ${missing.join(', ')}`)
   if (notCovered.length === 0) problems.push('not_covered is empty — every source has limits, and the ones you do not write down are the ones people discover')
+  const placeholders = placeholderFields(spec)
+  if (placeholders.length > 0) problems.push(`still says TODO: ${placeholders.join(', ')}`)
 
   const required = ABOUT_FIELDS.filter((f) => f.required).length
 
